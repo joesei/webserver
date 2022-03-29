@@ -4,5 +4,25 @@
 #pragma once
 
 #include <iostream>
+#include <mutex>
+#include <vector>
 
-// TODO: Reference additional headers your program requires here.
+#include "clientsession.h"
+
+class WebServer {
+ public:
+  std::mutex session_mutex_;
+  std::vector<ClientSession> client_sessions_;
+
+  WebServer();
+  ~WebServer();
+  void static ListenerThread();
+  void static WorkingThread();
+
+
+
+
+ private:
+
+};
+
