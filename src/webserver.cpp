@@ -1,119 +1,64 @@
-﻿// webserver.cpp : Defines the entry point for the application.
-//
-
+﻿
 #include "webserver.h"
-
-#include <winsock2.h>
-#include <thread> 
 
 using namespace std;
 
 WebServer::WebServer() {
-
+  Socket::SocketInit();
 }
 
 WebServer::~WebServer() {
-
+  Socket::SocketQuit();
 }
 
+void WebServer::Start() {
+  std::thread listener(&WebServer::ListenerThread, this);
+  WorkingThread();
+  listener.join();
+}
 
+void WebServer::ListenerThread() {
+  struct sockaddr_in server_addr;
+  struct sockaddr_in client_addr;
 
+  std::cout << "Entered Listener Thread\n";
 
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  server_addr.sin_port = htons(80);
 
+  server_socket_ = Socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
-void listener(SOCKET server, sockaddr_in service) {
-
-  int s = sizeof(service);
-  struct sockaddr_in client;
-  SOCKET socket;
-
+  server_socket_.Bind((struct sockaddr*)&server_addr, sizeof(server_addr));
   while (true) {
-    if (listen(server, SOMAXCONN) == SOCKET_ERROR) {
-      cout << "Listen function failed. Code: " << WSAGetLastError() << endl;
+    server_socket_.Listen(SOMAXCONN);
+
+    struct sockaddr_in client_addr;
+    int client_addr_len = 0;
+    Socket client_socket = server_socket_.Accept((struct sockaddr*)&client_addr, 
+                                                  &client_addr_len);
+
+    session_mutex_.lock();
+    client_sessions_.push_back(ClientSession(client_socket, client_addr, 
+                                             client_addr_len));
+
+    session_mutex_.unlock();
+  }
+
+}
+
+void WebServer::WorkingThread() {
+  // TODO: Make (recv_len) constant?
+  int recv_len = 200;
+  std::cout << "Entered Working Thread\n";
+  while (true) {
+    std::string msg;
+    for (ClientSession client : client_sessions_) {
+      client.GetSocket().Recv(&msg, recv_len, 0);
+      if (msg.size() > 0) {
+        std::cout << msg << endl;
+      }
     }
-    
-
-
-    // Client connected to server 
-    socket = accept(server, (struct sockaddr*)&client, &s);
-    if (socket == INVALID_SOCKET) {
-      cout << "Client connection failed. Code: " << WSAGetLastError() << endl;
-      closesocket(socket);
-    }
-    else {
-      cout << "Client connected successfully" << endl;
-      char message[200];
-      int result = 1;
-
-      // Receiving messages from client
-      do {
-        if ((result = recv(socket, message, 200, 0)) == SOCKET_ERROR) {
-          cout << "Failed to receive message from client. Code: " << 
-            WSAGetLastError() << endl;
-        }
-        else {
-
-          // result = # of bytes 
-
-          // Split message into lines
-          // Get key-pair of each line
-
-
-          cout << message << endl;
-        }
-      } while (result > 0);
-
-    }
-
   }
 }
 
-int main()
-{
-  const int port = 80;
-
-  WSADATA wsa;
-  SOCKET server;
-
-  sockaddr_in service;
-  service.sin_family = AF_INET;
-  service.sin_addr.s_addr = htonl(INADDR_ANY);
-  service.sin_port = htons(80);
-
-  cout << "Winsock startup" << endl;
-  if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
-  {
-    cout << "Winsock startup failed. Code: " << WSAGetLastError() << endl;
-    return 1;
-  }
-
-  cout << "Winsock Initialized" << endl;
-
-  cout << "Creating server socket" << endl;
-  if ((server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == INVALID_SOCKET) {
-    cout << "Server socket creation failed. Code: " << WSAGetLastError() << 
-      endl;
-    WSACleanup();
-    return 1;
-  }
-
-  cout << "Server socket created" << endl;
-
-  cout << "Binding server socket to port 80" << endl;
-  if (bind(server, (struct sockaddr*)&service, sizeof(service)) == SOCKET_ERROR) {
-    cout << "Server socket binding failed. Code: " << WSAGetLastError() << endl;
-    WSACleanup();
-    return 1;
-  }
-
-  thread listener_thread(listener, server, service);
-
-
-
-  listener_thread.join();
-
-  closesocket(server);
-  WSACleanup();
-
-  return 0;
-}

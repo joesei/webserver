@@ -1,8 +1,13 @@
 
-
 #include "socket.h"
 
-// TODO: More informational error messages
+Socket::Socket() {
+  socket_ = kInvalid;
+}
+
+Socket::Socket(SOCKET socket) {
+  socket_ = socket;
+}
 
 Socket::Socket(int socket) {
   socket_ = socket;
@@ -11,17 +16,18 @@ Socket::Socket(int socket) {
 // TODO: Modify for TCP only sockets
 Socket::Socket(int af, int type, int protocol) {
 #ifdef _WIN32
-  if ((socket_ = socket(af, type, protocol)) == INVALID_SOCKET) {
-    std::cout << "Socket creation failed. Code: " << WSAGetLastError() << 
-      std::endl;
-  }
+  socket_ = socket(af, type, protocol);
 #else
-  if ((socket_ = socket(af, type, 0)) < 0) {
-    std::cout << "Socket creation failed." << std::endl;
+  int socket = socket(af, type, 0);
+  if (socket == -1) {
+    socket_ = kInvalid;
+  } else {
+    socket_ = static_cast<SOCKET>(socket);
   }
 #endif
 }
 
+// TODO: Check open status before closing
 Socket::~Socket() {
 
 }
@@ -50,85 +56,101 @@ int Socket::SocketQuit() {
   return 0;
 }
 
-Socket Socket::Accept(int socket, struct sockaddr* addr, int* addrlen) {
-  return Socket(accept(socket, addr, addrlen));
+Socket Socket::Accept(struct sockaddr* addr, int* addrlen) {
+  Socket socket;
+  #ifdef _WIN32
+    SOCKET s = accept(socket_, addr, addrlen);
+    if (s == INVALID_SOCKET) {
+      socket = Socket();
+    } else {
+      socket = Socket(s);
+    }
+  #else
+    int s = accept(static_cast<int>(socket_), addr, addrlen);
+    if (s == -1) {
+      socket = Socket();
+    } else {
+      socket = Socket(s);
+    }
+  #endif 
+  return socket;
 }
 
+// Assumes return for Windows and Linux bind functions on error is (kError)
 int Socket::Bind(const struct sockaddr* addr, int addrlen) {
-  int status = 0;
-#ifdef _WIN32
-  status = bind(socket_, addr, addrlen);
-  if (status == SOCKET_ERROR) {
-    std::cout << "Socket bind failed. Code: " << WSAGetLastError() << 
-      std::endl;
-  }
-#else
-  status = bind(socket_, addr, addrlen);
-  if (status < 0) {
-    std::cout << "Socket bind failed." << std::endl;
-  }
-#endif
-  return status;
+  #ifdef _WIN32
+    return bind(socket_, addr, addrlen);
+  #else
+    return bind(static_cast<int>(socket_), addr, addrlen);
+  #endif 
 }
 
+// Assumes return for Windows and Linux close functions on error is (kError) 
 int Socket::Close() {
-  int status = 0;
+  int status = kError;
   #ifdef _WIN32
     status = shutdown(socket_, SD_BOTH);
     if (status == 0) {
       status = closesocket(socket_);
     }
   #else
-    status = shutdown(socket_, SHUT_RDWR);
+    status = shutdown(static_cast<int>(socket_), SHUT_RDWR);
     if (status == 0) {
-      status = close(socket_);
+      status = close(static_cast<int>(socket_));
     }
   #endif
   return status;
 }
 
+// Assumes return for Windows and Linux listen functions on error is (kError)
+int Socket::Listen(int backlog) {
+#ifdef _WIN32
+  return listen(socket_, backlog);
+#else
+  return listen(static_cast<int>(socket_), backlog);
+#endif  
+}
+
 // TODO: Research/Testing for case (len < 0)
 int Socket::Recv(std::string* msg, int len, int flags) {
-
-  int status = -1;
-  if (len > 0) {
+  int status = kError;
+  if (len > 0 && msg != NULL) {
     char* char_msg = (char*)malloc(sizeof(char) * len);
-    status = recv(socket_, char_msg, len, flags);
 
-  #ifdef _WIN32
-    if (status == SOCKET_ERROR) {
-      std::cout << "Failed to receive message. Code: " << WSAGetLastError() <<
-        std::endl;
-      return status;
-    }
-  #else
-    if (status == -1) {
-      std::cout << "Failed to receive message." << std::endl;
-      return status;
-    }
-  #endif 
-
-    msg->assign(char_msg, len);
-    free(char_msg);
+    // If statement to remove warning: "(char_msg) could be (0)"
+    if (char_msg != NULL) {
+      #ifdef _WIN32
+        status = recv(socket_, char_msg, len, flags);
+        if (status == SOCKET_ERROR) {
+          return kError;
+        }
+      #else
+        status = recv(static_cast<int>(socket_), char_msg, len, flags);
+        if (status == -1) {
+          return kError;
+        }
+      #endif 
+      msg->assign(char_msg, len);
+      free(char_msg);
+     }
   }
   return status;
 }
 
 int Socket::Send(std::string* msg, int len, int flags) {
-  int status = -1;
-  if (len > 0) {
-    status = send(socket_, msg->c_str(), len, flags);
-    
-  #ifdef _WIN32
-    if (status == _WIN32) {
-      std::cout << "Failed to send message. Code: " << WSAGetLastError() <<
-        std::endl;
-    }
-  #else
-    if (status == -1) {
-      std::cout << "Failed to send message." << std::endl;
-    }
-  #endif 
+  int status = kError;
+  if (len > 0) {   
+    #ifdef _WIN32
+      status = send(socket_, msg->c_str(), len, flags);
+      if (status == SOCKET_ERROR) {
+        return kError;
+      }
+    #else
+      status = send(static_cast<int>(socket_), msg->c_str(), len, flags);
+      if (status == -1) {
+        return kError;
+      }
+    #endif 
   }
   return status;
 }
