@@ -35,8 +35,7 @@ Socket::~Socket() {
 int Socket::SocketInit() {
   #ifdef _WIN32
     WSADATA wsa;
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
-    {
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
       std::cout << "Winsock startup failed. Code: " << WSAGetLastError() << 
         std::endl;
       return 1;
@@ -70,10 +69,14 @@ Socket Socket::Accept(struct sockaddr* addr, int* addrlen) {
     if (s == -1) {
       socket = Socket();
     } else {
-      socket = Socket(s);
+      socket = Socket(static_cast<SOCKET>(s));
     }
   #endif 
   return socket;
+}
+
+bool Socket::IsInvalid() {
+  return (socket_ == kInvalid);
 }
 
 // Assumes return for Windows and Linux bind functions on error is (kError)
